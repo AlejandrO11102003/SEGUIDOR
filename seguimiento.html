@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seguimiento Señor de los Milagros</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #map {
+      width: 100%;
+      height: 80vh;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans p-4 md:p-8">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-extrabold text-purple-800 mb-2">
+      Ruta y Seguimiento: Señor de los Milagros
+    </h1>
+    <p class="text-gray-600 mb-4">
+      Ruta estática (línea morada) y posición actual <b>en vivo</b> (marcador 🚚).
+    </p>
+
+    <div id="map" class="mb-6"></div>
+
+    <div id="status" class="bg-white p-4 rounded-lg border-l-4 border-purple-500 shadow">
+      <p class="font-semibold text-gray-700">Estado:</p>
+      <p id="coords-display" class="text-sm text-gray-600 mt-1">
+        Esperando actualización de ubicación...
+      </p>
+    </div>
+  </div>
+
+  <!-- Firebase + lógica -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDZNkcEhEIb6ckjUcnSx6mj1pFd0pZy6l4",
+      authDomain: "iglesia-a4ee9.firebaseapp.com",
+      projectId: "iglesia-a4ee9",
+      storageBucket: "iglesia-a4ee9.firebasestorage.app",
+      messagingSenderId: "844352643715",
+      appId: "1:844352643715:web:f0b3eb44ad2370eea4b1b6",
+      measurementId: "G-H08QX7K39Q"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    let map;
+    let routePolyline;
+    let movingMarker;
+
+    // Ruta fija
+    const routeCoordinates = [
+      { lat: -12.0402, lng: -77.0267 },
+      { lat: -12.0418, lng: -77.0289 },
+      { lat: -12.0425, lng: -77.0295 },
+      { lat: -12.0440, lng: -77.0275 },
+      { lat: -12.0438, lng: -77.0260 },
+    ];
+
+    async function initMap() {
+      const { Map } = await google.maps.importLibrary("maps");
+      const { Marker } = await google.maps.importLibrary("marker");
+
+      const initialPosition = routeCoordinates[0];
+      map = new Map(document.getElementById("map"), {
+        center: initialPosition,
+        zoom: 17,
+        mapId: "DEMO_MAP_ID",
+      });
+
+      // línea ruta
+      routePolyline = new google.maps.Polyline({
+        path: routeCoordinates,
+        geodesic: true,
+        strokeColor: "#5B21B6",
+        strokeOpacity: 0.9,
+        strokeWeight: 5,
+      });
+      routePolyline.setMap(map);
+
+      // 🚚 marcador
+      movingMarker = new Marker({
+        position: initialPosition,
+        map: map,
+        label: "🚚",
+        title: "Posición Actual",
+      });
+
+      listenToRealTimeLocation();
+      startSendingMyLocation(); // 👈 ahora tu móvil manda su GPS
+    }
+
+    // 🔎 Leer de Firestore
+    function listenToRealTimeLocation() {
+      const docRef = doc(db, "live_locations", "procesion_sm");
+      onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.lat && data.lng) {
+            const newPosition = { lat: data.lat, lng: data.lng };
+
+            movingMarker.setPosition(newPosition);
+            map.setCenter(newPosition);
+
+            document.getElementById("coords-display").textContent =
+              `Posición GPS: Lat ${newPosition.lat}, Lng ${newPosition.lng}`;
+          }
+        }
+      });
+    }
+
+    // 📡 Enviar tu ubicación con alta precisión
+    function startSendingMyLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          async (position) => {
+            const { latitude, longitude } = position.coords;
+            await setDoc(doc(db, "live_locations", "procesion_sm"), {
+              lat: latitude,
+              lng: longitude,
+              timestamp: new Date()
+            });
+          },
+          (error) => {
+            console.error("Error al obtener ubicación:", error);
+          },
+          {
+            enableHighAccuracy: true, // ✅ pide GPS real
+            maximumAge: 0,
+            timeout: 5000
+          }
+        );
+      } else {
+        alert("Tu dispositivo no soporta geolocalización");
+      }
+    }
+
+    async function main() {
+      try {
+        await signInAnonymously(auth);
+        await initMap();
+      } catch (error) {
+        console.error("Error inicializando visor:", error);
+        await initMap();
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", main);
+  </script>
+
+  <!-- Google Maps -->
+  <script async defer 
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDZNkcEhEIb6ckjUcnSx6mj1pFd0pZy6l4&libraries=maps,marker">
+  </script>
+</body>
+</html>
